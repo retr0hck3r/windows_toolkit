@@ -122,8 +122,8 @@ function Download-Utilities {
         }
     }
     
-    # Ссылка на OVAL-базу ФСТЭК (попробуем скачать XML-базу)
-    $ovalUrl = "https://bdu.fstec.ru/files/documents/oval.zip"
+    # Ссылка на OVAL-базу ФСТЭК
+    $ovalUrl = "https://bdu.fstec.ru/files/scanoval.zip"
     
     foreach ($tool in $urls.Keys) {
         $targetFolder = Join-Path $ToolsDir $urls[$tool].SubFolder
@@ -288,6 +288,7 @@ while ($true) {
         break
     }
 }
+
 
 
 

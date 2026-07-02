@@ -101,7 +101,7 @@ function Run-Script {
 }
 
 # Основной цикл меню
-while ($true) {
+:mainMenuLoop while ($true) {
     $dep = Get-DependenciesStatus
     $szi = Get-ExpectedSzi
     $sziRus = switch ($szi) {
@@ -131,13 +131,14 @@ while ($true) {
         4 {
             Write-Host "`nЗавершение работы хаба управления..." -ForegroundColor Yellow
             Start-Sleep -Seconds 1
-            break
+            break mainMenuLoop
         }
         -1 {
             Write-Host "`nЗавершение работы хаба управления..." -ForegroundColor Yellow
             Start-Sleep -Seconds 1
-            break
+            break mainMenuLoop
         }
     }
 }
+
 

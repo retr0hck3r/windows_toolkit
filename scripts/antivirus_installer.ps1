@@ -141,7 +141,7 @@ $tuiHelper = Join-Path $ServiceDir "tui_helper.ps1"
 if (Test-Path $tuiHelper) { . $tuiHelper }
 
 # Меню выбора и проверок
-while ($true) {
+:avMenuLoop while ($true) {
     $expectedSzi = Get-ExpectedSzi
     $sziName = switch ($expectedSzi) {
         "DallasLock" { "Dallas Lock" }
@@ -185,12 +185,13 @@ while ($true) {
             Read-Host "`nНажмите Enter для продолжения..."
         }
         5 {
-            break
+            break avMenuLoop
         }
         -1 {
-            break
+            break avMenuLoop
         }
     }
 }
+
 
 

@@ -1,0 +1,18 @@
+# Local reports and logs
+report/
+/report/
+*.log
+*.bak
+
+# Diagnostics tools binaries
+tools/
+/tools/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE config files
+.idea/
+.vscode/

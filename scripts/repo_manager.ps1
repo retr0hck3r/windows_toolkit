@@ -16,6 +16,7 @@ if (-not (Test-Path $ToolsDir)) {
 
 $toolsList = @(
     @{ Name = "ScanOVAL.exe"; Descr = "ScanOval (движок сканера)"; SubFolder = "scanoval" }
+    @{ Name = "oscap.exe"; Descr = "OpenSCAP (OVAL-сканер)"; SubFolder = "openscap" }
     @{ Name = "usbdeview.exe"; Descr = "USBDeview (анализ USB)"; SubFolder = "usbdeview" }
     @{ Name = "HWInfo64.exe"; Descr = "HWInfo64 (инвентаризация железа)"; SubFolder = "hwinfo" }
     @{ Name = "WinAudit.exe"; Descr = "WinAudit (системный аудит)"; SubFolder = "winaudit" }
@@ -120,6 +121,12 @@ function Download-Utilities {
             ExeName = "WinAudit.exe"
             SubFolder = "winaudit"
         }
+        "oscap.exe" = @{
+            Url = "https://github.com/OpenSCAP/openscap/releases/download/1.3.0/OpenSCAP-1.3.0-win32.msi"
+            IsMsi = $true
+            ExeName = "oscap.exe"
+            SubFolder = "openscap"
+        }
     }
     
     # Ссылка на OVAL-базу ФСТЭК
@@ -139,6 +146,7 @@ function Download-Utilities {
         
         $ext = ""
         if ($dlInfo.IsZip) { $ext = ".zip" }
+        elseif ($dlInfo.IsMsi) { $ext = ".msi" }
         $tempFile = Join-Path $tempDir ($tool + $ext)
         
         try {
@@ -166,6 +174,25 @@ function Download-Utilities {
                     Write-Host "Успешно скачан и установлен: $tool" -ForegroundColor Green
                 } else {
                     Write-Host "Ошибка: Файл $($dlInfo.ExeName) не найден внутри архива." -ForegroundColor Red
+                }
+            } elseif ($dlInfo.IsMsi) {
+                Write-Host "Распаковка MSI для $tool..." -ForegroundColor Gray
+                $msiExtractTemp = Join-Path $tempDir ($tool + "_extracted")
+                if (Test-Path $msiExtractTemp) { Remove-Item -Path $msiExtractTemp -Recurse -Force | Out-Null }
+                New-Item -ItemType Directory -Path $msiExtractTemp -Force | Out-Null
+                
+                # Запуск msiexec для административной распаковки MSI
+                $p = Start-Process -FilePath msiexec.exe -ArgumentList "/a `"$tempFile`"", "/qb", "TARGETDIR=`"$msiExtractTemp`"" -Wait -NoNewWindow -PassThru
+                
+                # Поиск папки OpenSCAP и копирование всех ее файлов
+                $sourceDir = Get-ChildItem -Path $msiExtractTemp -Directory -Recurse | Where-Object { $_.Name -like "*OpenSCAP*" } | Select-Object -First 1
+                if ($sourceDir) {
+                    Get-ChildItem -Path $sourceDir.FullName -File | ForEach-Object {
+                        Copy-Item -Path $_.FullName -Destination (Join-Path $targetFolder $_.Name) -Force
+                    }
+                    Write-Host "Успешно скачан и установлен: $tool" -ForegroundColor Green
+                } else {
+                    Write-Host "Ошибка: Содержимое OpenSCAP не найдено в распакованном MSI." -ForegroundColor Red
                 }
             } else {
                 Copy-Item -Path $tempFile -Destination $targetPath -Force

@@ -57,19 +57,28 @@ function Get-ExpectedSzi {
 # Проверка наличия утилит
 function Get-DependenciesStatus {
     $missing = @()
-    $tools = @{
-        "ScanOVAL.exe" = "ScanOval"
+    
+    # USBDeview, HWInfo, WinAudit обязательны для полного аудита
+    $mandatoryTools = @{
         "usbdeview.exe" = "USBDeview"
         "HWInfo64.exe" = "HWInfo"
         "WinAudit.exe" = "WinAudit"
     }
     
-    foreach ($tool in $tools.Keys) {
+    foreach ($tool in $mandatoryTools.Keys) {
         $path1 = Join-Path $ToolsDir $tool
         $path2 = Join-Path (Join-Path $ToolsDir ($tool -replace '\.exe$','')) $tool
         if (-not (Test-Path $path1) -and -not (Test-Path $path2)) {
-            $missing += $tools[$tool]
+            $missing += $mandatoryTools[$tool]
         }
+    }
+    
+    # Сканер OVAL: либо ScanOVAL.exe, либо oscap.exe
+    $hasScanOval = (Test-Path (Join-Path $ToolsDir "ScanOVAL.exe")) -or (Test-Path (Join-Path $ToolsDir "scanoval\ScanOVAL.exe"))
+    $hasOscap = (Test-Path (Join-Path $ToolsDir "oscap.exe")) -or (Test-Path (Join-Path $ToolsDir "openscap\oscap.exe"))
+    
+    if (-not $hasScanOval -and -not $hasOscap) {
+        $missing += "ScanOVAL/OpenSCAP"
     }
     
     if ($missing.Count -gt 0) {

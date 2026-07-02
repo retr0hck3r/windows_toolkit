@@ -191,8 +191,10 @@ function Download-Utilities {
         Expand-Archive -Path $ovalDestFile -DestinationPath $ovalDestDir -Force
         Write-Host "База OVAL распакована." -ForegroundColor Green
     } catch {
-        Write-Host "Не удалось скачать базу OVAL напрямую с ФСТЭК (возможно, блокировка РКН/капча): $($_.Exception.Message)" -ForegroundColor Yellow
-        Write-Host "Рекомендуется скачать базу вручную с https://bdu.fstec.ru/files/documents/oval.zip" -ForegroundColor Yellow
+        Write-Host "Не удалось скачать базу OVAL напрямую с ФСТЭК: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "ПРИМЕЧАНИЕ: БДУ ФСТЭК требует авторизации на портале или блокирует запросы из-за пределов РФ." -ForegroundColor Yellow
+        Write-Host "Пожалуйста, скачайте архив базы вручную (после авторизации) с https://bdu.fstec.ru/scanoval" -ForegroundColor Yellow
+        Write-Host "и сохраните полученный архив (.zip) или XML-файл в папку проекта 'service/'." -ForegroundColor Yellow
     }
     
     # Удаляем временную папку
@@ -286,6 +288,7 @@ while ($true) {
         break
     }
 }
+
 
 
 

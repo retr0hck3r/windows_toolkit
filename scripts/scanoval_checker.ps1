@@ -46,12 +46,12 @@ function Run-WinAudit {
         Write-Host "Запуск WinAudit для сбора системного аудита (это может занять до 1-2 минут)..." -ForegroundColor Gray
         Write-Host "Файл отчета: $outFile" -ForegroundColor DarkGray
         
-        # Запуск в фоновом режиме без GUI
-        $p = Start-Process -FilePath $exe -ArgumentList "/r=gsoPxuTUeERNtnzDaIbMpmidcSArCOHG", "/o=HTMLi", "/f=`"$outFile`"" -NoNewWindow -PassThru -Wait
-        if ($p.ExitCode -eq 0 -and (Test-Path $outFile)) {
+        # Прямой запуск через оператор & для наследования привилегий и работы в одной консоли
+        & $exe "/r=gsoPxuTUeERNtnzDaIbMpmidcSArCOHG" "/o=HTMLi" "/f=$outFile"
+        if (Test-Path $outFile) {
             Write-Host "[Успешно] Отчет WinAudit сгенерирован!" -ForegroundColor Green
         } else {
-            Write-Host "[Ошибка] WinAudit завершился с кодом $($p.ExitCode)" -ForegroundColor Red
+            Write-Host "[Ошибка] WinAudit не создал файл отчета." -ForegroundColor Red
         }
     } else {
         Write-Host "Пропущено: WinAudit.exe не найден в tools/." -ForegroundColor Yellow
@@ -66,7 +66,7 @@ function Run-USBDeview {
         $outFile = Join-Path $ReportDir "usbdeview_report.html"
         Write-Host "Запуск USBDeview для экспорта истории подключений USB..." -ForegroundColor Gray
         
-        $p = Start-Process -FilePath $exe -ArgumentList "/shtml", "`"$outFile`"" -NoNewWindow -PassThru -Wait
+        & $exe /shtml "$outFile"
         if (Test-Path $outFile) {
             Write-Host "[Успешно] Отчет USBDeview сгенерирован!" -ForegroundColor Green
         } else {
@@ -87,9 +87,7 @@ function Run-HWInfo {
         $outFile = Join-Path $ReportDir "hwinfo_report.txt"
         Write-Host "Запуск HWInfo для экспорта характеристик оборудования..." -ForegroundColor Gray
         
-        # HWiNFO64 поддерживает ключ /log для тихого текстового экспорта в Pro-версии,
-        # в бесплатной версии может открыться GUI. Запускаем с ожиданием.
-        $p = Start-Process -FilePath $exe -ArgumentList "/log=`"$outFile`"" -NoNewWindow -PassThru -Wait
+        & $exe "/log=$outFile"
         if (Test-Path $outFile) {
             Write-Host "[Успешно] Отчет HWInfo сохранен в: $outFile" -ForegroundColor Green
         } else {
@@ -116,10 +114,9 @@ function Run-ScanOval {
         if ($ovalFile) {
             Write-Host "Обнаружена локальная OVAL-база: $($ovalFile.FullName)" -ForegroundColor Green
             Write-Host "Запуск сканирования с базой ФСТЭК..." -ForegroundColor Gray
-            # Вызов ScanOVAL с базой. ScanOVAL CLI аргументы:
-            # ScanOVAL.exe -o <oval-xml> -r <results-xml> -h <report-html>
-            # Запускаем в фоновом режиме
-            $p = Start-Process -FilePath $exe -ArgumentList "-o `"$($ovalFile.FullName)`"", "-r `"$outFileXml`"", "-h `"$outFileHtml`"" -NoNewWindow -PassThru -Wait
+            
+            # Прямой вызов ScanOVAL с наследованием админ-прав
+            & $exe -o "$($ovalFile.FullName)" -r "$outFileXml" -h "$outFileHtml"
             if (Test-Path $outFileHtml) {
                 Write-Host "[Успешно] Сканирование ScanOval завершено! Отчет: $outFileHtml" -ForegroundColor Green
             } else {
@@ -128,7 +125,7 @@ function Run-ScanOval {
         } else {
             Write-Host "ВНИМАНИЕ: База определений OVAL ФСТЭК (*.xml) не найдена в папке service/." -ForegroundColor Yellow
             Write-Host "Запуск интерфейса ScanOVAL для ручной работы..." -ForegroundColor Gray
-            Start-Process -FilePath $exe
+            & $exe
         }
     } else {
         Write-Host "Пропущено: ScanOVAL.exe не найден в tools/." -ForegroundColor Yellow
@@ -144,5 +141,4 @@ Run-ScanOval
 Write-Host "`n=== Запуск внешних проверок завершен ===" -ForegroundColor Green
 Write-Host "Сформированные отчеты доступны в каталоге: $ReportDir" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для возврата в меню..."
-
 

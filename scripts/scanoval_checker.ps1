@@ -83,18 +83,89 @@ function Run-HWInfo {
     if (-not $exe) { $exe = Find-Tool "HWInfo32.exe" "hwinfo" }
     
     Write-Host "`n[3/4] Проверка HWInfo..." -ForegroundColor Cyan
+    $outFile = Join-Path $ReportDir "hwinfo_report.txt"
+    
     if ($exe) {
-        $outFile = Join-Path $ReportDir "hwinfo_report.txt"
         Write-Host "Запуск HWInfo для экспорта характеристик оборудования..." -ForegroundColor Gray
+        Write-Host "ВНИМАНИЕ: Если используется бесплатная версия HWInfo, откроется GUI (требуется версия Pro для тихого сбора)." -ForegroundColor Yellow
+        Write-Host "Вы можете сохранить отчет вручную через меню 'Report -> Save Report -> Short Text' в папку report как 'hwinfo_report.txt'." -ForegroundColor Yellow
+        Write-Host "Или просто закройте программу, и скрипт автоматически соберет данные средствами ОС." -ForegroundColor Yellow
         
-        & $exe "/log=$outFile"
-        if (Test-Path $outFile) {
-            Write-Host "[Успешно] Отчет HWInfo сохранен в: $outFile" -ForegroundColor Green
-        } else {
-            Write-Host "[Информация] HWInfo запущен. Сформируйте текстовый отчет вручную через меню 'Report' и сохраните в папку report как hwinfo_report.txt" -ForegroundColor Yellow
+        try {
+            & $exe "/log=$outFile"
+        } catch {
+            Write-Host "Не удалось запустить HWInfo автоматически." -ForegroundColor Yellow
         }
     } else {
         Write-Host "Пропущено: HWInfo64.exe не найден в tools/." -ForegroundColor Yellow
+    }
+    
+    # Резервный сбор информации об оборудовании средствами Windows, если файл отчета не был создан
+    if (-not (Test-Path $outFile)) {
+        Write-Host "Генерация резервного отчета об оборудовании средствами ОС..." -ForegroundColor Gray
+        try {
+            $cpuInfo = Get-CimInstance Win32_Processor | Select-Object Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors
+            $biosInfo = Get-CimInstance Win32_Bios | Select-Object Manufacturer, Name, Version, ReleaseDate
+            $compInfo = Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model, TotalPhysicalMemory
+            $osInfo = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture
+            $diskInfo = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Select-Object DeviceID, VolumeName, Size, FreeSpace
+            $gpuInfo = Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion
+            $netInfo = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" | Select-Object Description, MACAddress, IPAddress
+            
+            $hwReport = @(
+                "============================================================",
+                "   РЕЗЕРВНЫЙ ОТЧЕТ ОБ ОБОРУДОВАНИИ (ОС WINDOWS)",
+                "============================================================",
+                "Сгенерировано автоматически: $(Get-Date -Format 'dd.MM.yyyy HH:mm:ss')",
+                "",
+                "[Операционная система]",
+                "  Название: $($osInfo.Caption)",
+                "  Версия: $($osInfo.Version)",
+                "  Архитектура: $($osInfo.OSArchitecture)",
+                "",
+                "[Материнская плата и Система]",
+                "  Производитель: $($compInfo.Manufacturer)",
+                "  Модель: $($compInfo.Model)",
+                "  BIOS Производитель: $($biosInfo.Manufacturer)",
+                "  BIOS Версия: $($biosInfo.Version)",
+                "  BIOS Дата выпуска: $($biosInfo.ReleaseDate)",
+                "",
+                "[Процессор (CPU)]",
+                "  Модель: $($cpuInfo.Name)",
+                "  Производитель: $($cpuInfo.Manufacturer)",
+                "  Физических ядер: $($cpuInfo.NumberOfCores)",
+                "  Логических процессоров: $($cpuInfo.NumberOfLogicalProcessors)",
+                "",
+                "[Оперативная память (RAM)]",
+                "  Общий объем: $([Math]::Round($compInfo.TotalPhysicalMemory / 1GB, 2)) ГБ",
+                "",
+                "[Видеокарта (GPU)]",
+                "  Модель: $($gpuInfo.Name)",
+                "  Версия драйвера: $($gpuInfo.DriverVersion)",
+                "",
+                "[Накопители (Диски)]"
+            )
+            
+            foreach ($disk in $diskInfo) {
+                $sizeGb = [Math]::Round($disk.Size / 1GB, 2)
+                $freeGb = [Math]::Round($disk.FreeSpace / 1GB, 2)
+                $hwReport += "  Диск $($disk.DeviceID) ($($disk.VolumeName)) - Всего: $sizeGb ГБ, Свободно: $freeGb ГБ"
+            }
+            
+            $hwReport += ""
+            $hwReport += "[Сетевые адаптеры]"
+            foreach ($net in $netInfo) {
+                $ips = $net.IPAddress -join ", "
+                $hwReport += "  Адаптер: $($net.Description)"
+                $hwReport += "    MAC-адрес: $($net.MACAddress)"
+                $hwReport += "    IP-адрес: $ips"
+            }
+            
+            $hwReport | Out-File -FilePath $outFile -Encoding utf8
+            Write-Host "[Успешно] Резервный отчет об оборудовании сохранен в: $outFile" -ForegroundColor Green
+        } catch {
+            Write-Host "Не удалось создать резервный отчет об оборудовании: $($_.Exception.Message)" -ForegroundColor Red
+        }
     }
 }
 
@@ -141,4 +212,5 @@ Run-ScanOval
 Write-Host "`n=== Запуск внешних проверок завершен ===" -ForegroundColor Green
 Write-Host "Сформированные отчеты доступны в каталоге: $ReportDir" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для возврата в меню..."
+
 

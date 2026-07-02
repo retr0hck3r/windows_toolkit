@@ -133,7 +133,10 @@ function Download-Utilities {
         
         Write-Host "Скачивание $tool ..." -ForegroundColor Gray
         $dlInfo = $urls[$tool]
-        $tempFile = Join-Path $tempDir ($tool + (If ($dlInfo.IsZip) { ".zip" } else { "" }))
+        
+        $ext = ""
+        if ($dlInfo.IsZip) { $ext = ".zip" }
+        $tempFile = Join-Path $tempDir ($tool + $ext)
         
         try {
             # Установка TLS 1.2
@@ -254,5 +257,4 @@ while ($true) {
     Read-Host "`nНажмите Enter для продолжения..."
     Clear-Host
 }
-
 

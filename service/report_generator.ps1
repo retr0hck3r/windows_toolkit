@@ -1,8 +1,8 @@
 ﻿# ============================================================
-#               Р“Р•РќР•Р РђРўРћР  HTML-РћРўР§Р•РўРћР’ Р‘Р•Р—РћРџРђРЎРќРћРЎРўР
+#               ГЕНЕРАТОР HTML-ОТЧЕТОВ БЕЗОПАСНОСТИ
 # ============================================================
-# РљРѕРјРїРёР»РёСЂСѓРµС‚ РІСЃРµ СЃРѕР±СЂР°РЅРЅС‹Рµ РґР°РЅРЅС‹Рµ Р°СѓРґРёС‚Р° РІ РµРґРёРЅС‹Р№ РєСЂР°СЃРёРІС‹Р№
-# РёРЅС‚РµСЂР°РєС‚РёРІРЅС‹Р№ HTML-С„Р°Р№Р» СЃ РїРѕРґРґРµСЂР¶РєРѕР№ РїРµСЂРµРєР»СЋС‡РµРЅРёСЏ С‚РµРј.
+# Компилирует все собранные данные аудита в единый красивый
+# интерактивный HTML-файл с поддержкой переключения тем.
 
 param(
     [string]$targetClass,
@@ -30,19 +30,119 @@ $ProjectDir = Split-Path -Parent $ScriptDir
 $ReportDir = Join-Path $ProjectDir "report"
 $ReportFile = Join-Path $ReportDir "security_report.html"
 
-# Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ РєРѕРґРёСЂРѕРІР°РЅРёСЏ HTML
+# Вспомогательная функция кодирования HTML
 function Get-HtmlEncoded {
     param([string]$str)
     if (-not $str) { return "" }
     return $str.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace('"', "&quot;").Replace("'", "&#39;")
 }
 
-# Р’С‹С‡РёСЃР»РµРЅРёРµ РїСЂРѕС†РµРЅС‚РѕРІ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёСЏ
+# Чтение INI-файла стандартов для отображения требований в таблице
+function Get-ComplianceStandardsForReport {
+    param([string]$FilePath, [string]$Section)
+    $standards = @{
+        req_len = 6
+        req_hist = 0
+        req_max_days = 180
+        req_deny = 5
+        req_unlock_time = 300
+        req_tmout = 1800
+        req_secdel = "optional"
+        req_swap = "optional"
+        req_console = "optional"
+        req_ptrace = "optional"
+        req_interpreters = "optional"
+        req_audit = "optional"
+    }
+    
+    if (-not (Test-Path $FilePath)) {
+        return $standards
+    }
+    
+    $currentSection = "Default"
+    $lines = Get-Content $FilePath
+    foreach ($line in $lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match "^\[(.*)\]$") {
+            $currentSection = $Matches[1].Trim()
+        } elseif ($currentSection -eq $Section -and $trimmed -match "^([^#=]+)=(.*)$") {
+            $key = $Matches[1].Trim()
+            $value = $Matches[2].Trim()
+            $value = $value -replace "^['`"]|['`"]$"
+            $standards[$key] = $value
+        }
+    }
+    return $standards
+}
+
+$StandardsFile = Join-Path $ScriptDir "compliance_standards.conf"
+$std = Get-ComplianceStandardsForReport $StandardsFile $targetClass
+
+# ------------------------------------------------------------
+# Вычисление переменных для HTML шаблона
+# ------------------------------------------------------------
+
+# 1. Длина пароля
+$class_len = If ($cur_len -ge $std.req_len) { "status-ok" } else { "status-fail" }
+$status_len = If ($cur_len -ge $std.req_len) { "OK" } else { "FAIL" }
+$rec_len = If ($cur_len -ge $std.req_len) { "" } else { "<div class='recommendation'>Настройте минимальную длину пароля в secpol.msc или GPO.</div>" }
+
+# 2. История паролей
+$class_hist = If ($cur_hist -ge $std.req_hist) { "status-ok" } else { "status-fail" }
+$status_hist = If ($cur_hist -ge $std.req_hist) { "OK" } else { "FAIL" }
+$rec_hist = If ($cur_hist -ge $std.req_hist) { "" } else { "<div class='recommendation'>Включите хранение истории паролей (повторяемость).</div>" }
+
+# 3. Срок действия пароля
+$class_max_days = If ($cur_max_days -le $std.req_max_days) { "status-ok" } else { "status-fail" }
+$status_max_days = If ($cur_max_days -le $std.req_max_days) { "OK" } else { "FAIL" }
+$rec_max_days = If ($cur_max_days -le $std.req_max_days) { "" } else { "<div class='recommendation'>Ограничьте максимальный срок действия паролей.</div>" }
+
+# 4. Порог блокировки
+$class_deny = If ($std.req_deny -eq 0 -or ($cur_deny -gt 0 -and $cur_deny -le $std.req_deny)) { "status-ok" } else { "status-fail" }
+$status_deny = If ($std.req_deny -eq 0 -or ($cur_deny -gt 0 -and $cur_deny -le $std.req_deny)) { "OK" } else { "FAIL" }
+$rec_deny = If ($std.req_deny -eq 0 -or ($cur_deny -gt 0 -and $cur_deny -le $std.req_deny)) { "" } else { "<div class='recommendation'>Настройте порог блокировки учетных записей.</div>" }
+
+# 5. Время блокировки
+$class_unlock = If ($std.req_unlock_time -eq 0 -or ($cur_unlock_time -ge $std.req_unlock_time)) { "status-ok" } else { "status-fail" }
+$status_unlock = If ($std.req_unlock_time -eq 0 -or ($cur_unlock_time -ge $std.req_unlock_time)) { "OK" } else { "FAIL" }
+$rec_unlock = If ($std.req_unlock_time -eq 0 -or ($cur_unlock_time -ge $std.req_unlock_time)) { "" } else { "<div class='recommendation'>Настройте время автоматической разблокировки.</div>" }
+
+# 6. Таймаут сессии
+$class_tmout = If ($std.req_tmout -eq 0 -or ($cur_tmout -gt 0 -and $cur_tmout -le $std.req_tmout)) { "status-ok" } else { "status-fail" }
+$status_tmout = If ($std.req_tmout -eq 0 -or ($cur_tmout -gt 0 -and $cur_tmout -le $std.req_tmout)) { "OK" } else { "FAIL" }
+$rec_tmout = If ($std.req_tmout -eq 0 -or ($cur_tmout -gt 0 -and $cur_tmout -le $std.req_tmout)) { "" } else { "<div class='recommendation'>Настройте ограничение неактивности сессии или заставки.</div>" }
+
+# 7. Очистка файла подкачки
+$class_swap = If ($std.req_swap -eq "optional" -or $cur_swap -eq $std.req_swap) { "status-ok" } else { "status-fail" }
+$status_swap = If ($std.req_swap -eq "optional" -or $cur_swap -eq $std.req_swap) { "OK" } else { "FAIL" }
+$rec_swap = If ($std.req_swap -eq "optional" -or $cur_swap -eq $std.req_swap) { "" } else { "<div class='recommendation'>Включите ClearPageFileAtShutdown в реестре Windows.</div>" }
+
+# 8. Защита процессов LSA
+$class_ptrace = If ($std.req_ptrace -eq "optional" -or $cur_ptrace -eq $std.req_ptrace) { "status-ok" } else { "status-fail" }
+$status_ptrace = If ($std.req_ptrace -eq "optional" -or $cur_ptrace -eq $std.req_ptrace) { "OK" } else { "FAIL" }
+$rec_ptrace = If ($std.req_ptrace -eq "optional" -or $cur_ptrace -eq $std.req_ptrace) { "" } else { "<div class='recommendation'>Включите дополнительную защиту процессов LSA.</div>" }
+
+# 9. Консоль / Блокировка экрана
+$class_console = If ($std.req_console -eq "optional" -or $cur_console -eq $std.req_console) { "status-ok" } else { "status-fail" }
+$status_console = If ($std.req_console -eq "optional" -or $cur_console -eq $std.req_console) { "OK" } else { "FAIL" }
+$rec_console = If ($std.req_console -eq "optional" -or $cur_console -eq $std.req_console) { "" } else { "<div class='recommendation'>Настройте обязательный ввод пароля при возврате из сна/заставки.</div>" }
+
+# 10. Системный аудит
+$class_audit = If ($std.req_audit -eq "optional" -or $cur_audit -eq "Включен" -or $cur_audit -like "*строгие*") { "status-ok" } else { "status-fail" }
+$status_audit = If ($std.req_audit -eq "optional" -or $cur_audit -eq "Включен" -or $cur_audit -like "*строгие*") { "OK" } else { "FAIL" }
+$rec_audit = If ($std.req_audit -eq "optional" -or $cur_audit -eq "Включен" -or $cur_audit -like "*строгие*") { "" } else { "<div class='recommendation'>Включите политики аудита безопасности (auditpol.exe).</div>" }
+
+# Переменные для плашек СЗИ
+$class_szi_badge = If ($sziStatus.Active) { "badge-active" } else { "badge-inactive" }
+$text_szi_badge = If ($sziStatus.Active) { "Службы Активны" } else { "Отключено / Недоступно" }
+$text_szi_installed = If ($sziStatus.Installed) { "Установлено" } else { "Не найдено" }
+
+# Вычисление процентов соответствия
 $percent = [Math]::Round($score * 100 / $totalChecks)
-$dashStroke = [Math]::Round(2 * [Math]::PI * 50) # Р”Р»РёРЅР° РѕРєСЂСѓР¶РЅРѕСЃС‚Рё РґР»СЏ gauge (r=50) -> ~314
+$dashStroke = [Math]::Round(2 * [Math]::PI * 50) # Длина окружности для gauge (r=50) -> ~314
 $dashOffset = [Math]::Round($dashStroke - ($percent / 100 * $dashStroke))
 
-# РћРїСЂРµРґРµР»РµРЅРёРµ РјРѕРґРµР»Рё РїСЂРѕС†РµСЃСЃРѕСЂР° Рё РћР—РЈ РґР»СЏ С…РµРґРµСЂР°
+# Определение модели процессора и ОЗУ для хедера
 $cpu = (Get-CimInstance Win32_Processor).Name
 $ram = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1GB)
 $os = (Get-CimInstance Win32_OperatingSystem).Caption
@@ -50,9 +150,9 @@ $sn = (Get-CimInstance Win32_Bios).SerialNumber
 if (-not $sn -or $sn -eq "System Serial Number" -or $sn -eq "To be filled by O.E.M.") {
     $sn = (Get-CimInstance Win32_ComputerSystemProduct).IdentifyingNumber
 }
-$sn = If ($sn) { $sn } else { "РќРµ РѕРїСЂРµРґРµР»РµРЅ" }
+$sn = If ($sn) { $sn } else { "Не определен" }
 
-# РЎР±РѕСЂ СЃС‚СЂРѕРє РїСЂРѕРіСЂР°РјРјРЅРѕРіРѕ РѕР±РµСЃРїРµС‡РµРЅРёСЏ
+# Сбор строк программного обеспечения
 $softwareRows = ""
 $softwareFile = Join-Path $ReportDir "installed_software.txt"
 if (Test-Path $softwareFile) {
@@ -69,7 +169,7 @@ if (Test-Path $softwareFile) {
     }
 }
 
-# РЎР±РѕСЂ СЃС‚СЂРѕРє USB-СѓСЃС‚СЂРѕР№СЃС‚РІ
+# Сбор строк USB-устройств
 $usbRows = ""
 foreach ($dev in $usbDevices) {
     $dName = Get-HtmlEncoded $dev.Device
@@ -79,20 +179,26 @@ foreach ($dev in $usbDevices) {
     $usbRows += "<tr><td><b>$dFriendly</b></td><td>$dName</td><td><code>$dSerial</code></td><td>$dDesc</td></tr>`n"
 }
 
-# РЎР±РѕСЂ РІРЅРµС€РЅРёС… С„Р°Р№Р»РѕРІ РѕС‚С‡РµС‚РѕРІ
+# Сбор внешних файлов отчетов
 $winauditExists = Test-Path (Join-Path $ReportDir "winaudit_report.html")
 $usbdeviewExists = Test-Path (Join-Path $ReportDir "usbdeview_report.html")
 $hwinfoExists = Test-Path (Join-Path $ReportDir "hwinfo_report.txt")
 $scanovalExists = Test-Path (Join-Path $ReportDir "scanoval_report.html")
 
-# Р—Р°РїРёСЃСЊ С€Р°Р±Р»РѕРЅР° HTML-РѕС‚С‡РµС‚Р°
+# Кнопки отчетов внешних утилит
+$html_winaudit = If ($winauditExists) { "<a href='winaudit_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+$html_usbdeview = If ($usbdeviewExists) { "<a href='usbdeview_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+$html_hwinfo = If ($hwinfoExists) { "<a href='hwinfo_report.txt' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть TXT</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+$html_scanoval = If ($scanovalExists) { "<a href='scanoval_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+
+# Запись шаблона HTML-отчета
 $html = @"
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>РћС‚С‡РµС‚ Рѕ Р·Р°С‰РёС‰РµРЅРЅРѕСЃС‚Рё РђР Рњ Windows - $env:COMPUTERNAME</title>
+    <title>Отчет о защищенности АРМ Windows - $env:COMPUTERNAME</title>
     <style>
         :root {
             --bg-main: #0f172a;
@@ -449,34 +555,34 @@ $html = @"
         <header>
             <div class="header-top">
                 <div>
-                    <h1>РћС‚С‡РµС‚ Рѕ Р·Р°С‰РёС‰РµРЅРЅРѕСЃС‚Рё РђР Рњ Windows</h1>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">РђРћ РќРР В«Р РЈР‘РРќВ» вЂў Р’РЅСѓС‚СЂРµРЅРЅРёР№ РєРѕРЅС‚СЂРѕР»СЊ Р·Р°С‰РёС‰РµРЅРЅРѕСЃС‚Рё РђРЎ</p>
+                    <h1>Отчет о защищенности АРМ Windows</h1>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem;">АО НИИ «РУБИН» • Внутренний контроль защищенности АС</p>
                 </div>
                 <div class="btn-group">
-                    <button class="theme-toggle" onclick="toggleTheme()">вЂпёЏ РўРµРјР°</button>
-                    <button class="print-btn" onclick="window.print()">рџ–ЁпёЏ РџРµС‡Р°С‚СЊ</button>
+                    <button class="theme-toggle" onclick="toggleTheme()">☀️ Тема</button>
+                    <button class="print-btn" onclick="window.print()">🖨️ Печать</button>
                 </div>
             </div>
             
             <div class="meta-grid">
                 <div class="meta-item">
-                    <span>РРјСЏ РєРѕРјРїСЊСЋС‚РµСЂР°</span>
+                    <span>Имя компьютера</span>
                     <strong>$env:COMPUTERNAME</strong>
                 </div>
                 <div class="meta-item">
-                    <span>РћРїРµСЂР°С†РёРѕРЅРЅР°СЏ СЃРёСЃС‚РµРјР°</span>
+                    <span>Операционная система</span>
                     <strong>$os</strong>
                 </div>
                 <div class="meta-item">
-                    <span>РЎРµСЂРёР№РЅС‹Р№ РЅРѕРјРµСЂ</span>
+                    <span>Серийный номер</span>
                     <strong>$sn</strong>
                 </div>
                 <div class="meta-item">
-                    <span>РџСЂРѕС†РµСЃСЃРѕСЂ Рё РћР—РЈ</span>
-                    <strong>$cpu, $ram Р“Р‘</strong>
+                    <span>Процессор и ОЗУ</span>
+                    <strong>$cpu, $ram ГБ</strong>
                 </div>
                 <div class="meta-item">
-                    <span>Р”Р°С‚Р° РїСЂРѕРІРµСЂРєРё</span>
+                    <span>Дата проверки</span>
                     <strong>$(Get-Date -Format 'dd.MM.yyyy HH:mm:ss')</strong>
                 </div>
             </div>
@@ -492,18 +598,18 @@ $html = @"
                     </svg>
                     <div class="gauge-text">$percent%</div>
                 </div>
-                <div class="score-label">РљР»Р°СЃСЃ Р·Р°С‰РёС‰РµРЅРЅРѕСЃС‚Рё: $targetClass</div>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">РџСЂРѕР№РґРµРЅРѕ С‚РµСЃС‚РѕРІ: $score РёР· $totalChecks</p>
+                <div class="score-label">Класс защищенности: $targetClass</div>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Пройдено тестов: $score из $totalChecks</p>
             </div>
 
             <div class="szi-card">
-                <div class="szi-title">РЎРїРµС†РёР°Р»РёР·РёСЂРѕРІР°РЅРЅРѕРµ РЎР—Р РѕС‚ РќРЎР”</div>
+                <div class="szi-title">Специализированное СЗИ от НСД</div>
                 <div>
-                    <strong>Р¦РµР»РµРІРѕРµ РЎР—Р:</strong> $($sziStatus.Name)<br>
-                    <strong>РЎС‚Р°С‚СѓСЃ СѓСЃС‚Р°РЅРѕРІРєРё:</strong> $((If ($sziStatus.Installed) { "РЈСЃС‚Р°РЅРѕРІР»РµРЅРѕ" } else { "РќРµ РЅР°Р№РґРµРЅРѕ" }))<br>
-                    <strong>РЎРѕСЃС‚РѕСЏРЅРёРµ Р·Р°С‰РёС‚С‹:</strong>
-                    <div class="szi-status-badge $((If ($sziStatus.Active) { "badge-active" } else { "badge-inactive" }))" style="margin-top: 0.5rem;">
-                        $((If ($sziStatus.Active) { "РЎР»СѓР¶Р±С‹ РђРєС‚РёРІРЅС‹" } else { "РћС‚РєР»СЋС‡РµРЅРѕ / РќРµРґРѕСЃС‚СѓРїРЅРѕ" }))
+                    <strong>Целевое СЗИ:</strong> $($sziStatus.Name)<br>
+                    <strong>Статус установки:</strong> $text_szi_installed<br>
+                    <strong>Состояние защиты:</strong>
+                    <div class="szi-status-badge $class_szi_badge" style="margin-top: 0.5rem;">
+                        $text_szi_badge
                     </div>
                     <p style="font-size: 0.85rem; color: var(--text-muted);">$($sziStatus.Details)</p>
                 </div>
@@ -512,104 +618,84 @@ $html = @"
 
         <!-- Compliance Checks Section -->
         <div class="section-panel">
-            <div class="section-title">РљРѕРЅС‚СЂРѕР»СЊ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёСЏ С‚СЂРµР±РѕРІР°РЅРёСЏРј Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё Р¤РЎРўР­Рљ</div>
+            <div class="section-title">Контроль соответствия требованиям безопасности ФСТЭК</div>
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 80px; text-align: center;">РЎС‚Р°С‚СѓСЃ</th>
-                        <th>РўСЂРµР±РѕРІР°РЅРёРµ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё</th>
-                        <th>Р¤Р°РєС‚РёС‡РµСЃРєРѕРµ Р·РЅР°С‡РµРЅРёРµ</th>
-                        <th>Р­С‚Р°Р»РѕРЅ РґР»СЏ РєР»Р°СЃСЃР° $targetClass</th>
+                        <th style="width: 80px; text-align: center;">Статус</th>
+                        <th>Требование безопасности</th>
+                        <th>Фактическое значение</th>
+                        <th>Эталон для класса $targetClass</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- Р”Р»РёРЅР° РїР°СЂРѕР»СЏ -->
+                    <!-- Длина пароля -->
                     <tr>
-                        <td class="status-cell $((If ($cur_len -ge $std.req_len) { "status-ok" } else { "status-fail" }))">$((If ($cur_len -ge $std.req_len) { "OK" } else { "FAIL" }))</td>
-                        <td>РњРёРЅРёРјР°Р»СЊРЅР°СЏ РґР»РёРЅР° РїР°СЂРѕР»СЏ
-                            $((If ($cur_len -ge $std.req_len) { "" } else { "<div class='recommendation'>РќР°СЃС‚СЂРѕР№С‚Рµ РјРёРЅРёРјР°Р»СЊРЅСѓСЋ РґР»РёРЅСѓ РїР°СЂРѕР»СЏ РІ secpol.msc РёР»Рё GPO.</div>" }))
-                        </td>
+                        <td class="status-cell $class_len">$status_len</td>
+                        <td>Минимальная длина пароля $rec_len</td>
                         <td>$cur_len</td>
                         <td>&gt;= $($std.req_len)</td>
                     </tr>
-                    <!-- РСЃС‚РѕСЂРёСЏ РїР°СЂРѕР»РµР№ -->
+                    <!-- История паролей -->
                     <tr>
-                        <td class="status-cell $((If ($cur_hist -ge $std.req_hist) { "status-ok" } else { "status-fail" }))">$((If ($cur_hist -ge $std.req_hist) { "OK" } else { "FAIL" }))</td>
-                        <td>РҐСЂР°РЅРµРЅРёРµ РёСЃС‚РѕСЂРёРё РїР°СЂРѕР»РµР№
-                            $((If ($cur_hist -ge $std.req_hist) { "" } else { "<div class='recommendation'>Р’РєР»СЋС‡РёС‚Рµ С…СЂР°РЅРµРЅРёРµ РёСЃС‚РѕСЂРёРё РїР°СЂРѕР»РµР№ (РїРѕРІС‚РѕСЂСЏРµРјРѕСЃС‚СЊ).</div>" }))
-                        </td>
+                        <td class="status-cell $class_hist">$status_hist</td>
+                        <td>Хранение истории паролей $rec_hist</td>
                         <td>$cur_hist</td>
                         <td>&gt;= $($std.req_hist)</td>
                     </tr>
-                    <!-- РњР°РєСЃ СЃСЂРѕРє РґРµР№СЃС‚РІРёСЏ -->
+                    <!-- Макс срок действия -->
                     <tr>
-                        <td class="status-cell $((If ($cur_max_days -le $std.req_max_days) { "status-ok" } else { "status-fail" }))">$((If ($cur_max_days -le $std.req_max_days) { "OK" } else { "FAIL" }))</td>
-                        <td>РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЃСЂРѕРє РґРµР№СЃС‚РІРёСЏ РїР°СЂРѕР»СЏ (РґРЅ.)
-                            $((If ($cur_max_days -le $std.req_max_days) { "" } else { "<div class='recommendation'>РћРіСЂР°РЅРёС‡СЊС‚Рµ РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЃСЂРѕРє РґРµР№СЃС‚РІРёСЏ РїР°СЂРѕР»РµР№.</div>" }))
-                        </td>
+                        <td class="status-cell $class_max_days">$status_max_days</td>
+                        <td>Максимальный срок действия пароля (дн.) $rec_max_days</td>
                         <td>$cur_max_days</td>
                         <td>&lt;= $($std.req_max_days)</td>
                     </tr>
-                    <!-- Р§РёСЃР»Рѕ РїРѕРїС‹С‚РѕРє РґРѕ Р±Р»РѕРєРёСЂРѕРІРєРё -->
+                    <!-- Число попыток до блокировки -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_deny -eq 0 -or ($cur_deny -gt 0 -and $cur_deny -le $std.req_deny)) { "status-ok" } else { "status-fail" }))">$((If ($std.req_deny -eq 0 -or ($cur_deny -gt 0 -and $cur_deny -le $std.req_deny)) { "OK" } else { "FAIL" }))</td>
-                        <td>Р§РёСЃР»Рѕ РїРѕРїС‹С‚РѕРє РІС…РѕРґР° РґРѕ Р±Р»РѕРєРёСЂРѕРІРєРё
-                            $((If ($std.req_deny -eq 0 -or ($cur_deny -gt 0 -and $cur_deny -le $std.req_deny)) { "" } else { "<div class='recommendation'>РќР°СЃС‚СЂРѕР№С‚Рµ РїРѕСЂРѕРі Р±Р»РѕРєРёСЂРѕРІРєРё СѓС‡РµС‚РЅС‹С… Р·Р°РїРёСЃРµР№.</div>" }))
-                        </td>
+                        <td class="status-cell $class_deny">$status_deny</td>
+                        <td>Число попыток входа до блокировки $rec_deny</td>
                         <td>$cur_deny</td>
                         <td>&lt;= $($std.req_deny)</td>
                     </tr>
-                    <!-- Р’СЂРµРјСЏ Р±Р»РѕРєРёСЂРѕРІРєРё -->
+                    <!-- Время блокировки -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_unlock_time -eq 0 -or ($cur_unlock_time -ge $std.req_unlock_time)) { "status-ok" } else { "status-fail" }))">$((If ($std.req_unlock_time -eq 0 -or ($cur_unlock_time -ge $std.req_unlock_time)) { "OK" } else { "FAIL" }))</td>
-                        <td>Р’СЂРµРјСЏ Р°РІС‚РѕСЂР°Р·Р±Р»РѕРєРёСЂРѕРІРєРё Р°РєРєР°СѓРЅС‚Р° (СЃРµРє)
-                            $((If ($std.req_unlock_time -eq 0 -or ($cur_unlock_time -ge $std.req_unlock_time)) { "" } else { "<div class='recommendation'>РќР°СЃС‚СЂРѕР№С‚Рµ РІСЂРµРјСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕР№ СЂР°Р·Р±Р»РѕРєРёСЂРѕРІРєРё.</div>" }))
-                        </td>
+                        <td class="status-cell $class_unlock">$status_unlock</td>
+                        <td>Время авторазблокировки аккаунта (сек) $rec_unlock</td>
                         <td>$cur_unlock_time</td>
                         <td>&gt;= $($std.req_unlock_time)</td>
                     </tr>
-                    <!-- РўР°Р№РјР°СѓС‚ СЃРµСЃСЃРёРё -->
+                    <!-- Таймаут сессии -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_tmout -eq 0 -or ($cur_tmout -gt 0 -and $cur_tmout -le $std.req_tmout)) { "status-ok" } else { "status-fail" }))">$((If ($std.req_tmout -eq 0 -or ($cur_tmout -gt 0 -and $cur_tmout -le $std.req_tmout)) { "OK" } else { "FAIL" }))</td>
-                        <td>РўР°Р№РјР°СѓС‚ РЅРµР°РєС‚РёРІРЅРѕСЃС‚Рё СЃРµСЃСЃРёРё (СЃРµРє)
-                            $((If ($std.req_tmout -eq 0 -or ($cur_tmout -gt 0 -and $cur_tmout -le $std.req_tmout)) { "" } else { "<div class='recommendation'>РќР°СЃС‚СЂРѕР№С‚Рµ РѕРіСЂР°РЅРёС‡РµРЅРёРµ РЅРµР°РєС‚РёРІРЅРѕСЃС‚Рё СЃРµСЃСЃРёРё РёР»Рё Р·Р°СЃС‚Р°РІРєРё.</div>" }))
-                        </td>
+                        <td class="status-cell $class_tmout">$status_tmout</td>
+                        <td>Таймаут неактивности сессии (сек) $rec_tmout</td>
                         <td>$cur_tmout</td>
                         <td>&lt;= $($std.req_tmout)</td>
                     </tr>
-                    <!-- РћС‡РёСЃС‚РєР° С„Р°Р№Р»Р° РїРѕРґРєР°С‡РєРё -->
+                    <!-- Очистка файла подкачки -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_swap -eq "optional" -or $cur_swap -eq $std.req_swap) { "status-ok" } else { "status-fail" }))">$((If ($std.req_swap -eq "optional" -or $cur_swap -eq $std.req_swap) { "OK" } else { "FAIL" }))</td>
-                        <td>РћС‡РёСЃС‚РєР° РІРёСЂС‚СѓР°Р»СЊРЅРѕР№ РїР°РјСЏС‚Рё (Pagefile)
-                            $((If ($std.req_swap -eq "optional" -or $cur_swap -eq $std.req_swap) { "" } else { "<div class='recommendation'>Р’РєР»СЋС‡РёС‚Рµ ClearPageFileAtShutdown РІ СЂРµРµСЃС‚СЂРµ Windows.</div>" }))
-                        </td>
+                        <td class="status-cell $class_swap">$status_swap</td>
+                        <td>Очистка виртуальной памяти (Pagefile) $rec_swap</td>
                         <td>$cur_swap</td>
                         <td>$($std.req_swap)</td>
                     </tr>
-                    <!-- Р—Р°С‰РёС‚Р° LSA -->
+                    <!-- Защита LSA -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_ptrace -eq "optional" -or $cur_ptrace -eq $std.req_ptrace) { "status-ok" } else { "status-fail" }))">$((If ($std.req_ptrace -eq "optional" -or $cur_ptrace -eq $std.req_ptrace) { "OK" } else { "FAIL" }))</td>
-                        <td>Р—Р°С‰РёС‚Р° РїРѕРґСЃРёСЃС‚РµРјС‹ LSA (RunAsPPL)
-                            $((If ($std.req_ptrace -eq "optional" -or $cur_ptrace -eq $std.req_ptrace) { "" } else { "<div class='recommendation'>Р’РєР»СЋС‡РёС‚Рµ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅСѓСЋ Р·Р°С‰РёС‚Сѓ РїСЂРѕС†РµСЃСЃРѕРІ LSA.</div>" }))
-                        </td>
+                        <td class="status-cell $class_ptrace">$status_ptrace</td>
+                        <td>Защита подсистемы LSA (RunAsPPL) $rec_ptrace</td>
                         <td>$cur_ptrace</td>
                         <td>$($std.req_ptrace)</td>
                     </tr>
-                    <!-- Р‘Р»РѕРєРёСЂРѕРІРєР° РєРѕРЅСЃРѕР»Рё -->
+                    <!-- Блокировка консоли -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_console -eq "optional" -or $cur_console -eq $std.req_console) { "status-ok" } else { "status-fail" }))">$((If ($std.req_console -eq "optional" -or $cur_console -eq $std.req_console) { "OK" } else { "FAIL" }))</td>
-                        <td>Р‘Р»РѕРєРёСЂРѕРІРєР° СЌРєСЂР°РЅР° РїР°СЂРѕР»РµРј РїСЂРё Р·Р°СЃС‚Р°РІРєРµ
-                            $((If ($std.req_console -eq "optional" -or $cur_console -eq $std.req_console) { "" } else { "<div class='recommendation'>РќР°СЃС‚СЂРѕР№С‚Рµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ РІРІРѕРґ РїР°СЂРѕР»СЏ РїСЂРё РІРѕР·РІСЂР°С‚Рµ РёР· СЃРЅР°/Р·Р°СЃС‚Р°РІРєРё.</div>" }))
-                        </td>
+                        <td class="status-cell $class_console">$status_console</td>
+                        <td>Блокировка экрана паролем при заставке $rec_console</td>
                         <td>$cur_console</td>
                         <td>$($std.req_console)</td>
                     </tr>
-                    <!-- РЎРёСЃС‚РµРјРЅС‹Р№ Р°СѓРґРёС‚ -->
+                    <!-- Системный аудит -->
                     <tr>
-                        <td class="status-cell $((If ($std.req_audit -eq "optional" -or $cur_audit -eq "Р’РєР»СЋС‡РµРЅ" -or $cur_audit -like "*СЃС‚СЂРѕРіРёРµ*") { "status-ok" } else { "status-fail" }))">$((If ($std.req_audit -eq "optional" -or $cur_audit -eq "Р’РєР»СЋС‡РµРЅ" -or $cur_audit -like "*СЃС‚СЂРѕРіРёРµ*") { "OK" } else { "FAIL" }))</td>
-                        <td>Р РµР¶РёРј СЃРёСЃС‚РµРјРЅРѕРіРѕ Р°СѓРґРёС‚Р°
-                            $((If ($std.req_audit -eq "optional" -or $cur_audit -eq "Р’РєР»СЋС‡РµРЅ" -or $cur_audit -like "*СЃС‚СЂРѕРіРёРµ*") { "" } else { "<div class='recommendation'>Р’РєР»СЋС‡РёС‚Рµ РїРѕР»РёС‚РёРєРё Р°СѓРґРёС‚Р° Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё (auditpol.exe).</div>" }))
-                        </td>
+                        <td class="status-cell $class_audit">$status_audit</td>
+                        <td>Режим системного аудита $rec_audit</td>
                         <td>$cur_audit</td>
                         <td>$($std.req_audit)</td>
                     </tr>
@@ -619,16 +705,16 @@ $html = @"
 
         <!-- USB History Section -->
         <div class="section-panel">
-            <div class="section-title">РСЃС‚РѕСЂРёСЏ РїРѕРґРєР»СЋС‡РµРЅРЅС‹С… USB-СѓСЃС‚СЂРѕР№СЃС‚РІ С…СЂР°РЅРµРЅРёСЏ (Р РµРµСЃС‚СЂ USBSTOR)</div>
-            <input type="text" id="usbSearch" class="search-box" placeholder="РџРѕРёСЃРє РїРѕ РёРјРµРЅРё, СЃРµСЂРёР№РЅРѕРјСѓ РЅРѕРјРµСЂСѓ РёР»Рё РѕРїРёСЃР°РЅРёСЋ..." onkeyup="filterUsbTable()">
+            <div class="section-title">История подключенных USB-устройств хранения (Реестр USBSTOR)</div>
+            <input type="text" id="usbSearch" class="search-box" placeholder="Поиск по имени, серийному номеру или описанию..." onkeyup="filterUsbTable()">
             <div class="table-container">
                 <table id="usbTable">
                     <thead>
                         <tr>
-                            <th>РРјСЏ (Friendly Name)</th>
-                            <th>РРјСЏ СѓСЃС‚СЂРѕР№СЃС‚РІР°</th>
-                            <th>РЎРµСЂРёР№РЅС‹Р№ РЅРѕРјРµСЂ</th>
-                            <th>РћРїРёСЃР°РЅРёРµ СЂРµРµСЃС‚СЂР°</th>
+                            <th>Имя (Friendly Name)</th>
+                            <th>Имя устройства</th>
+                            <th>Серийный номер</th>
+                            <th>Описание реестра</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -641,18 +727,18 @@ $html = @"
         <!-- Software Inventory Section -->
         <div class="section-panel">
             <div class="section-title">
-                <span>РЎРѕСЃС‚Р°РІ СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅРѕРіРѕ РџРћ ($installedSoftwareCount РїРѕР·РёС†РёР№)</span>
-                <a href="installed_software.txt" class="action-btn" target="_blank" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">РћС‚РєСЂС‹С‚СЊ TXT</a>
+                <span>Состав установленного ПО ($installedSoftwareCount позиций)</span>
+                <a href="installed_software.txt" class="action-btn" target="_blank" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Открыть TXT</a>
             </div>
-            <input type="text" id="softwareSearch" class="search-box" placeholder="РџРѕРёСЃРє РџРћ РїРѕ РЅР°Р·РІР°РЅРёСЋ, РІРµСЂСЃРёРё РёР»Рё РёР·РґР°С‚РµР»СЋ..." onkeyup="filterSoftwareTable()">
+            <input type="text" id="softwareSearch" class="search-box" placeholder="Поиск ПО по названию, версии или издателю..." onkeyup="filterSoftwareTable()">
             <div class="table-container">
                 <table id="softwareTable">
                     <thead>
                         <tr>
-                            <th>РќР°Р·РІР°РЅРёРµ РїСЂРѕРіСЂР°РјРјРЅРѕРіРѕ РѕР±РµСЃРїРµС‡РµРЅРёСЏ</th>
-                            <th>Р’РµСЂСЃРёСЏ</th>
-                            <th>РР·РґР°С‚РµР»СЊ</th>
-                            <th>Р”Р°С‚Р° СѓСЃС‚Р°РЅРѕРІРєРё</th>
+                            <th>Название программного обеспечения</th>
+                            <th>Версия</th>
+                            <th>Издатель</th>
+                            <th>Дата установки</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -664,39 +750,39 @@ $html = @"
 
         <!-- External Tool Reports Section -->
         <div class="section-panel">
-            <div class="section-title">РћС‚С‡РµС‚С‹ РІРЅРµС€РЅРёС… РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёС… СѓС‚РёР»РёС‚</div>
+            <div class="section-title">Отчеты внешних диагностических утилит</div>
             <div class="tool-grid">
                 <!-- WinAudit -->
                 <div class="tool-card">
                     <div>
                         <div class="tool-name">WinAudit System Report</div>
-                        <div class="tool-status">РЎРѕРґРµСЂР¶РёС‚ РїРѕР»РЅС‹Р№ СЃРЅРёРјРѕРє РћРЎ, РџРћ Рё Р°РїРїР°СЂР°С‚СѓСЂС‹ РђР Рњ.</div>
+                        <div class="tool-status">Содержит полный снимок ОС, ПО и аппаратуры АРМ.</div>
                     </div>
-                    $((If ($winauditExists) { "<a href='winaudit_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>РћС‚РєСЂС‹С‚СЊ HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>РћС‚С‡РµС‚ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ (СѓС‚РёР»РёС‚Р° РЅРµ Р·Р°РїСѓСЃРєР°Р»Р°СЃСЊ)</span>" }))
+                    $html_winaudit
                 </div>
                 <!-- USBDeview -->
                 <div class="tool-card">
                     <div>
                         <div class="tool-name">USBDeview NirSoft Report</div>
-                        <div class="tool-status">РћС„РёС†РёР°Р»СЊРЅС‹Р№ РѕС‚С‡РµС‚ РґРµС‚Р°Р»СЊРЅРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ РїРѕСЂС‚РѕРІ Рё С„Р»РµС€РµРє.</div>
+                        <div class="tool-status">Официальный отчет детального состояния портов и флешек.</div>
                     </div>
-                    $((If ($usbdeviewExists) { "<a href='usbdeview_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>РћС‚РєСЂС‹С‚СЊ HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>РћС‚С‡РµС‚ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ (СѓС‚РёР»РёС‚Р° РЅРµ Р·Р°РїСѓСЃРєР°Р»Р°СЃСЊ)</span>" }))
+                    $html_usbdeview
                 </div>
                 <!-- HWInfo -->
                 <div class="tool-card">
                     <div>
                         <div class="tool-name">HWInfo Hardware Report</div>
-                        <div class="tool-status">РўРµС…РЅРёС‡РµСЃРєРёРµ С…Р°СЂР°РєС‚РµСЂРёСЃС‚РёРєРё РїСЂРѕС†РµСЃСЃРѕСЂР°, РћР—РЈ, РїР»Р°С‚ Рё РЅР°РєРѕРїРёС‚РµР»РµР№.</div>
+                        <div class="tool-status">Технические характеристики процессора, ОЗУ, плат и накопителей.</div>
                     </div>
-                    $((If ($hwinfoExists) { "<a href='hwinfo_report.txt' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>РћС‚РєСЂС‹С‚СЊ TXT</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>РћС‚С‡РµС‚ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ (СѓС‚РёР»РёС‚Р° РЅРµ Р·Р°РїСѓСЃРєР°Р»Р°СЃСЊ)</span>" }))
+                    $html_hwinfo
                 </div>
                 <!-- ScanOval -->
                 <div class="tool-card">
                     <div>
                         <div class="tool-name">ScanOval FSTEC Report</div>
-                        <div class="tool-status">РћС‚С‡РµС‚ СЃРєР°РЅРµСЂР° СѓСЏР·РІРёРјРѕСЃС‚РµР№ Р¤РЎРўР­Рљ Р РѕСЃСЃРёРё РЅР° Р±Р°Р·Рµ OVAL.</div>
+                        <div class="tool-status">Отчет сканера уязвимостей ФСТЭК России на базе OVAL.</div>
                     </div>
-                    $((If ($scanovalExists) { "<a href='scanoval_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>РћС‚РєСЂС‹С‚СЊ HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>РћС‚С‡РµС‚ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ (СѓС‚РёР»РёС‚Р° РЅРµ Р·Р°РїСѓСЃРєР°Р»Р°СЃСЊ)</span>" }))
+                    $html_scanoval
                 </div>
             </div>
         </div>
@@ -755,7 +841,6 @@ $html = @"
 </html>
 "@
 
-# Р—Р°РїРёСЃСЊ РѕС‚С‡РµС‚Р° РІ С„Р°Р№Р»
+# Запись отчета в файл
 $html | Out-File $ReportFile -Encoding utf8
-
 

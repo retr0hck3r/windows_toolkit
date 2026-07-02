@@ -192,37 +192,65 @@ function Run-HWInfo {
     }
 }
 
-# 4. Запуск ScanOval
+# 4. Нативный OVAL-сканер + резервный ScanOVAL.exe
 function Run-ScanOval {
-    $exe = Find-Tool "ScanOVAL.exe" "scanoval"
-    Write-Host "`n[4/4] Проверка ScanOval..." -ForegroundColor Cyan
-    if ($exe) {
-        Write-Host "Запуск ScanOVAL (движка сканера уязвимостей ФСТЭК)..." -ForegroundColor Gray
-        
-        # Поиск OVAL-файла базы уязвимостей ФСТЭК в папке service
-        $ovalFile = Get-ChildItem -Path (Join-Path $ProjectDir "service") -Filter "*.xml" | Where-Object { $_.Name -like "*oval*" -or $_.Name -like "*vulnerabilities*" } | Select-Object -First 1
-        
-        $outFileXml = Join-Path $ScanovalDir "scanoval_results.xml"
-        $outFileHtml = Join-Path $ScanovalDir "scanoval_report.html"
-        
-        if ($ovalFile) {
-            Write-Host "Обнаружена локальная OVAL-база: $($ovalFile.FullName)" -ForegroundColor Green
-            Write-Host "Запуск сканирования с базой ФСТЭК..." -ForegroundColor Gray
-            
-            # Прямой вызов ScanOVAL с наследованием админ-прав
-            & $exe -o "$($ovalFile.FullName)" -r "$outFileXml" -h "$outFileHtml"
-            if (Test-Path $outFileHtml) {
-                Write-Host "[Успешно] Сканирование ScanOval завершено! Отчет: $outFileHtml" -ForegroundColor Green
-            } else {
-                Write-Host "[Информация] ScanOVAL запущен в интерактивном режиме. Загрузите базу $($ovalFile.Name) и выполните проверку вручную." -ForegroundColor Yellow
-            }
-        } else {
-            Write-Host "ВНИМАНИЕ: База определений OVAL ФСТЭК (*.xml) не найдена в папке service/." -ForegroundColor Yellow
+    Write-Host "`n[4/4] Сканирование уязвимостей (OVAL ФСТЭК)..." -ForegroundColor Cyan
+
+    $outFileXml  = Join-Path $ScanovalDir "scanoval_results.xml"
+    $outFileHtml = Join-Path $ScanovalDir "scanoval_report.html"
+    $nativeScanner = Join-Path $ProjectDir "service\generate_scanoval_report.ps1"
+
+    # Поиск OVAL-базы ФСТЭК (один или несколько XML-файлов)
+    $ovalFiles = Get-ChildItem -Path (Join-Path $ProjectDir "service") -Filter "*.xml" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike "*results*" }
+
+    if (-not $ovalFiles) {
+        Write-Host "ВНИМАНИЕ: OVAL-база ФСТЭК (*.xml) не найдена в папке service/." -ForegroundColor Yellow
+        Write-Host "  Загрузите базу через пункт 4 (Установка утилит) или вручную из bdu.fstec.ru" -ForegroundColor DarkYellow
+
+        # Если оригинальный ScanOVAL.exe есть — предложим его GUI
+        $exe = Find-Tool "ScanOVAL.exe" "scanoval"
+        if ($exe) {
             Write-Host "Запуск интерфейса ScanOVAL для ручной работы..." -ForegroundColor Gray
             & $exe
         }
+        return
+    }
+
+    # Выбираем первый файл части 1, если файлов несколько
+    $ovalFile = $ovalFiles | Sort-Object Name | Select-Object -First 1
+    Write-Host "OVAL-база: $($ovalFile.Name)  ($([Math]::Round($ovalFile.Length/1MB,1)) МБ)" -ForegroundColor Green
+
+    if (Test-Path $nativeScanner) {
+        # ─── НАТИВНЫЙ POWERSHELL-СКАНЕР (основной путь) ───────────────────
+        Write-Host "Запуск нативного PS OVAL-сканера (без oscap.exe)..." -ForegroundColor Gray
+        Write-Host "  Это займёт 1-3 минуты для большой базы ФСТЭК, пожалуйста подождите..." -ForegroundColor DarkGray
+
+        & $nativeScanner `
+            -OvalXmlPath   $ovalFile.FullName `
+            -OutputHtmlPath $outFileHtml `
+            -OutputXmlPath  $outFileXml
+
+        if (Test-Path $outFileHtml) {
+            Write-Host "[Успешно] Отчёт сформирован: $outFileHtml" -ForegroundColor Green
+        } else {
+            Write-Host "[Ошибка] Нативный сканер не создал отчёт." -ForegroundColor Red
+        }
+
     } else {
-        Write-Host "Пропущено: ScanOVAL.exe не найден в tools/." -ForegroundColor Yellow
+        # ─── РЕЗЕРВНЫЙ ВАРИАНТ: ScanOVAL.exe ──────────────────────────────
+        $exe = Find-Tool "ScanOVAL.exe" "scanoval"
+        if ($exe) {
+            Write-Host "Запуск ScanOVAL.exe..." -ForegroundColor Gray
+            & $exe -o "$($ovalFile.FullName)" -r "$outFileXml" -h "$outFileHtml"
+            if (Test-Path $outFileHtml) {
+                Write-Host "[Успешно] ScanOVAL завершён! Отчёт: $outFileHtml" -ForegroundColor Green
+            } else {
+                Write-Host "[Информация] ScanOVAL запущен в интерактивном режиме." -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Пропущено: generate_scanoval_report.ps1 и ScanOVAL.exe не найдены." -ForegroundColor Yellow
+        }
     }
 }
 

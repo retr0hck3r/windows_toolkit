@@ -26,6 +26,16 @@ foreach ($dir in @($ScriptsDir, $ServiceDir, $ReportDir, $ToolsDir)) {
     }
 }
 
+# Подгрузка TUI модуля
+$tuiHelper = Join-Path $ServiceDir "tui_helper.ps1"
+if (Test-Path $tuiHelper) {
+    . $tuiHelper
+} else {
+    Write-Host "Ошибка: Файл $tuiHelper не найден!" -ForegroundColor Red
+    Read-Host "Нажмите Enter для выхода..."
+    Exit 1
+}
+
 # Файл настроек СЗИ по умолчанию
 $SziConfigFile = Join-Path $ServiceDir "szi_settings.conf"
 if (-not (Test-Path $SziConfigFile)) {
@@ -48,10 +58,10 @@ function Get-ExpectedSzi {
 function Get-DependenciesStatus {
     $missing = @()
     $tools = @{
-        "ScanOVAL.exe" = "ScanOval сканирование"
-        "usbdeview.exe" = "USBDeview (анализ USB)"
-        "HWInfo64.exe" = "HWInfo (сведения о железе)"
-        "WinAudit.exe" = "WinAudit (системный аудит)"
+        "ScanOVAL.exe" = "ScanOval"
+        "usbdeview.exe" = "USBDeview"
+        "HWInfo64.exe" = "HWInfo"
+        "WinAudit.exe" = "WinAudit"
     }
     
     foreach ($tool in $tools.Keys) {
@@ -65,90 +75,68 @@ function Get-DependenciesStatus {
     if ($missing.Count -gt 0) {
         return @{
             "Status" = "Warning"
-            "Message" = "ВНИМАНИЕ: Отсутствуют утилиты диагностики: " + ($missing -join ", ") + "`nНастройте папку tools или запустите поиск во вкладке 'Инструменты' (пункт 4)."
+            "Message" = "ВНИМАНИЕ: Отсутствуют утилиты: " + ($missing -join ", ") + " (Пункт 4 -> Установка)"
         }
     } else {
         return @{
             "Status" = "OK"
-            "Message" = "Все диагностические утилиты найдены в папке tools."
+            "Message" = "Все утилиты диагностики обнаружены в tools/."
         }
     }
-}
-
-function Show-Header {
-    Clear-Host
-    Write-Host "========================================================================" -ForegroundColor Cyan
-    Write-Host '                    АО НИИ "РУБИН" - Windows Security Checker           ' -ForegroundColor Cyan
-    Write-Host "========================================================================" -ForegroundColor Cyan
-    
-    $dep = Get-DependenciesStatus
-    if ($dep.Status -eq "Warning") {
-        Write-Host $dep.Message -ForegroundColor Yellow
-    } else {
-        Write-Host $dep.Message -ForegroundColor Green
-    }
-    
-    $szi = Get-ExpectedSzi
-    $sziRus = switch ($szi) {
-        "DallasLock" { "Dallas Lock" }
-        "SNS" { "Secret Net Studio" }
-        default { "Не выбрано (только средства ОС)" }
-    }
-    Write-Host "Целевое СЗИ для проверок соответствия: $sziRus" -ForegroundColor Gray
-    Write-Host "------------------------------------------------------------------------" -ForegroundColor Cyan
 }
 
 function Run-Script {
     param([string]$ScriptName, [array]$ArgsList = @())
     $scriptPath = Join-Path $ScriptsDir $ScriptName
     if (-not (Test-Path $scriptPath)) {
-        Write-Host "Ошибка: Скрипт $scriptPath не найден!" -ForegroundColor Red
-        Read-Host "Нажмите Enter для возврата..."
+        Show-TuiMessage -Title "Ошибка" -Message "Скрипт $scriptPath не найден!"
         return
     }
     
     try {
         & $scriptPath @ArgsList
     } catch {
-        Write-Host "Критическая ошибка при выполнении скрипта:`n$_" -ForegroundColor Red
-        Read-Host "Нажмите Enter для продолжения..."
+        Show-TuiMessage -Title "Критическая ошибка" -Message "Ошибка при выполнении скрипта $ScriptName :`n`n$_"
     }
 }
 
 # Основной цикл меню
 while ($true) {
-    Show-Header
-    Write-Host "Выберите инструмент для запуска:"
-    Write-Host "1) Аудит и СЗИ" -ForegroundColor Green
-    Write-Host "2) Внешние утилиты (ScanOval, USBDeview, HWInfo, WinAudit)" -ForegroundColor Green
-    Write-Host "3) Установка антивирусного ПО и выбор СЗИ" -ForegroundColor Green
-    Write-Host "4) Инструменты (Менеджер зависимостей)" -ForegroundColor Green
-    Write-Host "0) Выход" -ForegroundColor Red
-    Write-Host "------------------------------------------------------------------------" -ForegroundColor Cyan
+    $dep = Get-DependenciesStatus
+    $szi = Get-ExpectedSzi
+    $sziRus = switch ($szi) {
+        "DallasLock" { "Dallas Lock" }
+        "SNS" { "Secret Net Studio" }
+        default { "Не выбрано (только средства ОС)" }
+    }
     
-    $choice = Read-Host "Введите номер действия"
+    $title = "АО НИИ 'РУБИН' - Windows Security Checker"
+    $subtitle = "Статус: $($dep.Message)`n  Целевое СЗИ для проверок соответствия: $sziRus"
+    
+    $options = @(
+        "Аудит и СЗИ (политики ФСТЭК, реестр USB, аудит ПО)",
+        "Внешние утилиты (ScanOval, USBDeview, HWInfo, WinAudit)",
+        "Установка антивирусного ПО и выбор СЗИ",
+        "Инструменты (Менеджер зависимостей)",
+        "Выход"
+    )
+    
+    $choice = Show-TuiMenu -Title $title -Subtitle $subtitle -Options $options
     
     switch ($choice) {
-        "1" {
-            Run-Script "security_checker.ps1"
-        }
-        "2" {
-            Run-Script "scanoval_checker.ps1"
-        }
-        "3" {
-            Run-Script "antivirus_installer.ps1"
-        }
-        "4" {
-            Run-Script "repo_manager.ps1"
-        }
-        "0" {
-            Write-Host "Завершение работы хаба управления..." -ForegroundColor Yellow
+        0 { Run-Script "security_checker.ps1" }
+        1 { Run-Script "scanoval_checker.ps1" }
+        2 { Run-Script "antivirus_installer.ps1" }
+        3 { Run-Script "repo_manager.ps1" }
+        4 {
+            Write-Host "`nЗавершение работы хаба управления..." -ForegroundColor Yellow
             Start-Sleep -Seconds 1
             break
         }
-        default {
-            Write-Host "Неверный выбор. Пожалуйста, введите число от 0 до 4." -ForegroundColor Red
+        -1 {
+            Write-Host "`nЗавершение работы хаба управления..." -ForegroundColor Yellow
             Start-Sleep -Seconds 1
+            break
         }
     }
 }

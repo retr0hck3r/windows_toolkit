@@ -136,6 +136,10 @@ function Scan-InstallPackages {
     }
 }
 
+# Подгрузка TUI модуля
+$tuiHelper = Join-Path $ServiceDir "tui_helper.ps1"
+if (Test-Path $tuiHelper) { . $tuiHelper }
+
 # Меню выбора и проверок
 while ($true) {
     $expectedSzi = Get-ExpectedSzi
@@ -145,49 +149,48 @@ while ($true) {
         default { "Не выбрано (только средства ОС)" }
     }
     
-    Clear-Host
-    Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host "            АНТИВИРУСНОЕ ПО И СИСТЕМЫ ЗАЩИТЫ (СЗИ)       " -ForegroundColor Cyan
-    Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host "Текущий выбор целевого СЗИ: $sziName" -ForegroundColor Yellow
-    Write-Host "--------------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "1) Выбрать СЗИ Dallas Lock"
-    Write-Host "2) Выбрать СЗИ Secret Net Studio"
-    Write-Host "3) Сбросить выбор СЗИ (проверять только настройки ОС)"
-    Write-Host "4) Проверить статус активных защитных систем в ОС"
-    Write-Host "5) Найти установочные пакеты на флешках"
-    Write-Host "0) Назад в главное меню"
-    Write-Host "--------------------------------------------------------" -ForegroundColor Cyan
+    $title = "АНТИВИРУСНОЕ ПО И СИСТЕМЫ ЗАЩИТЫ (СЗИ)"
+    $subtitle = "Текущий выбор целевого СЗИ: $sziName"
     
-    $c = Read-Host "Выберите действие"
-    switch ($c) {
-        "1" {
+    $options = @(
+        "Выбрать СЗИ Dallas Lock",
+        "Выбрать СЗИ Secret Net Studio",
+        "Сбросить выбор СЗИ (проверять только настройки ОС)",
+        "Проверить статус активных защитных систем в ОС",
+        "Найти установочные пакеты на флешках",
+        "Назад в главное меню"
+    )
+    
+    $choice = Show-TuiMenu -Title $title -Subtitle $subtitle -Options $options
+    
+    switch ($choice) {
+        0 {
             Set-ExpectedSzi "DallasLock"
             Start-Sleep -Seconds 1
         }
-        "2" {
+        1 {
             Set-ExpectedSzi "SNS"
             Start-Sleep -Seconds 1
         }
-        "3" {
+        2 {
             Set-ExpectedSzi "None"
             Start-Sleep -Seconds 1
         }
-        "4" {
+        3 {
             Test-SecuritySoftware
             Read-Host "`nНажмите Enter для продолжения..."
         }
-        "5" {
+        4 {
             Scan-InstallPackages
             Read-Host "`nНажмите Enter для продолжения..."
         }
-        "0" {
+        5 {
             break
         }
-        default {
-            Write-Host "Неверный выбор." -ForegroundColor Red
-            Start-Sleep -Seconds 1
+        -1 {
+            break
         }
     }
 }
+
 

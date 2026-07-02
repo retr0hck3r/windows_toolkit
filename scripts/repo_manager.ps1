@@ -235,26 +235,53 @@ function Show-Status {
     }
 }
 
+# Подгрузка TUI модуля
+$tuiHelper = Join-Path $ProjectDir "service\tui_helper.ps1"
+if (Test-Path $tuiHelper) { . $tuiHelper }
+
+function Get-TuiStatusString {
+    $statusStr = ""
+    foreach ($tool in $toolsList) {
+        $path1 = Join-Path $ToolsDir $tool.Name
+        $path2 = Join-Path (Join-Path $ToolsDir $tool.SubFolder) $tool.Name
+        
+        $status = "ОТСУТСТВУЕТ"
+        if (Test-Path $path1) {
+            $status = "НАЙДЕН"
+        } elseif (Test-Path $path2) {
+            $status = "НАЙДЕН"
+        }
+        $statusStr += "  • $($tool.Descr) : $status`n"
+    }
+    
+    $ovalXml = Get-ChildItem -Path (Join-Path $ProjectDir "service") -Filter "*.xml" | Where-Object { $_.Name -like "*oval*" -or $_.Name -like "*vulnerabilities*" }
+    $ovalStatus = If ($ovalXml) { "НАЙДЕНА" } else { "ОТСУТСТВУЕТ" }
+    $statusStr += "  • OVAL-база ФСТЭК : $ovalStatus"
+    
+    return $statusStr
+}
+
 # Меню менеджера утилит
 while ($true) {
-    Show-Status
-    Write-Host "`nДоступные действия:"
-    Write-Host "1) Сканировать съемные диски (поиск локальных копий)"
-    Write-Host "2) Автоматически скачать утилиты из интернета"
-    Write-Host "0) Назад в главное меню"
-    Write-Host "--------------------------------------------------------"
+    $subtitle = "Статус диагностических утилит:`n" + (Get-TuiStatusString)
     
-    $c = Read-Host "Выберите действие"
-    if ($c -eq "1") {
+    $options = @(
+        "Сканировать съемные диски (поиск локальных копий)",
+        "Автоматически скачать утилиты из интернета",
+        "Назад в главное меню"
+    )
+    
+    $choice = Show-TuiMenu -Title "МЕНЕДЖЕР ЗАВИСИМОСТЕЙ И РЕПОЗИТОРИЕВ" -Subtitle $subtitle -Options $options
+    
+    if ($choice -eq 0) {
         Scan-RemovableDrives
-    } elseif ($c -eq "2") {
+        Read-Host "`nНажмите Enter для продолжения..."
+    } elseif ($choice -eq 1) {
         Download-Utilities
-    } elseif ($c -eq "0") {
+        Read-Host "`nНажмите Enter для продолжения..."
+    } elseif ($choice -eq 2 -or $choice -eq -1) {
         break
-    } else {
-        Write-Host "Неверный выбор." -ForegroundColor Red
     }
-    Read-Host "`nНажмите Enter для продолжения..."
-    Clear-Host
 }
+
 

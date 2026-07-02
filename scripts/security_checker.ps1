@@ -52,29 +52,23 @@ function Get-ComplianceStandards {
     return $standards
 }
 
+# Подгрузка TUI модуля
+$tuiHelper = Join-Path $ServiceDir "tui_helper.ps1"
+if (Test-Path $tuiHelper) { . $tuiHelper }
+
 # Выбор класса защищенности
 function Choose-SecurityClass {
     $classes = @("3Б", "2Б", "1Д", "1Г", "3А", "2А", "1В", "1Б", "1А")
-    while ($true) {
-        Clear-Host
-        Write-Host "========================================================" -ForegroundColor Cyan
-        Write-Host "             ВЫБОР КЛАССА ЗАЩИЩЕННОСТИ АС                " -ForegroundColor Cyan
-        Write-Host "========================================================" -ForegroundColor Cyan
-        for ($i = 0; $i -lt $classes.Count; $i++) {
-            Write-Host "$($i + 1)) Класс $($classes[$i])"
-        }
-        Write-Host "0) Назад"
-        Write-Host "--------------------------------------------------------" -ForegroundColor Cyan
-        $choice = Read-Host "Выберите класс (1-9) или 0"
-        
-        if ($choice -eq "0") { return $null }
-        $idx = [int]$choice - 1
-        if ($idx -ge 0 -and $idx -lt $classes.Count) {
-            return $classes[$idx]
-        }
-        Write-Host "Неверный выбор." -ForegroundColor Red
-        Start-Sleep -Seconds 1
+    $options = @()
+    foreach ($c in $classes) { $options += "Класс $c" }
+    $options += "Назад"
+    
+    $choice = Show-TuiMenu -Title "ВЫБОР КЛАССА ЗАЩИЩЕННОСТИ АС" -Subtitle "Выберите целевой класс защищенности информационной системы для аудита:" -Options $options
+    
+    if ($choice -eq -1 -or $choice -eq $classes.Count) {
+        return $null
     }
+    return $classes[$choice]
 }
 
 # Основная процедура аудита
@@ -370,4 +364,5 @@ Write-Host "`nАудит успешно завершен!" -ForegroundColor Gree
 Write-Host "Текстовый отчет сохранен в: $compTextFile" -ForegroundColor Cyan
 Write-Host "HTML отчет сохранен в: $ProjectDir\report\security_report.html" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для продолжения..."
+
 

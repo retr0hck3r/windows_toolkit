@@ -19,7 +19,16 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Exit 1
 }
 
-if (-not (Test-Path $ReportDir)) { New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null }
+if (Test-Path $ReportDir) {
+    # Удаляем предыдущие отчеты внешних утилит, чтобы старые результаты не отображались, если утилиты будут пропущены в текущем запуске
+    $filesToClear = @("winaudit_report.html", "usbdeview_report.html", "hwinfo_report.txt", "scanoval_report.html", "scanoval_results.xml")
+    foreach ($file in $filesToClear) {
+        $filePath = Join-Path $ReportDir $file
+        if (Test-Path $filePath) { Remove-Item $filePath -Force | Out-Null }
+    }
+} else {
+    New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null
+}
 
 # Функция поиска утилиты по имени (в корне tools или подпапках)
 function Find-Tool {
@@ -212,5 +221,6 @@ Run-ScanOval
 Write-Host "`n=== Запуск внешних проверок завершен ===" -ForegroundColor Green
 Write-Host "Сформированные отчеты доступны в каталоге: $ReportDir" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для возврата в меню..."
+
 
 

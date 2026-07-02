@@ -14,6 +14,19 @@ $ReportDir = Join-Path $ProjectDir "report"
 $SziConfigFile = Join-Path $ServiceDir "szi_settings.conf"
 $StandardsFile = Join-Path $ServiceDir "compliance_standards.conf"
 
+# Очистка предыдущих результатов комплаенса и списков ПО перед новым сканированием
+if (Test-Path $ReportDir) {
+    $oldSoftware = Join-Path $ReportDir "installed_software.txt"
+    if (Test-Path $oldSoftware) { Remove-Item $oldSoftware -Force | Out-Null }
+    
+    $oldMainReport = Join-Path $ReportDir "security_report.html"
+    if (Test-Path $oldMainReport) { Remove-Item $oldMainReport -Force | Out-Null }
+    
+    Get-ChildItem -Path $ReportDir -Filter "compliance_report_*.txt" -ErrorAction SilentlyContinue | Remove-Item -Force | Out-Null
+} else {
+    New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null
+}
+
 # Функция парсинга INI-файла стандартов
 function Get-ComplianceStandards {
     param([string]$FilePath, [string]$Section)
@@ -364,5 +377,6 @@ Write-Host "`nАудит успешно завершен!" -ForegroundColor Gree
 Write-Host "Текстовый отчет сохранен в: $compTextFile" -ForegroundColor Cyan
 Write-Host "HTML отчет сохранен в: $ProjectDir\report\security_report.html" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для продолжения..."
+
 
 

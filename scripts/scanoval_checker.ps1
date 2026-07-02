@@ -11,6 +11,14 @@ $ProjectDir = Split-Path -Parent $ScriptDir
 $ReportDir = Join-Path $ProjectDir "report"
 $ToolsDir = Join-Path $ProjectDir "tools"
 
+# Проверка на запуск от имени Администратора
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Ошибка: Этот скрипт требует запуска от имени Администратора." -ForegroundColor Red
+    Read-Host "Нажмите Enter для выхода..."
+    Exit 1
+}
+
 if (-not (Test-Path $ReportDir)) { New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null }
 
 # Функция поиска утилиты по имени (в корне tools или подпапках)
@@ -136,4 +144,5 @@ Run-ScanOval
 Write-Host "`n=== Запуск внешних проверок завершен ===" -ForegroundColor Green
 Write-Host "Сформированные отчеты доступны в каталоге: $ReportDir" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для возврата в меню..."
+
 

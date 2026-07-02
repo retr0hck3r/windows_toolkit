@@ -98,6 +98,9 @@ function Download-Utilities {
     $tempDir = Join-Path $env:TEMP "SecurityCheckerDownloads"
     if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
     
+    # Обход проверки SSL-сертификатов (для работы с bdu.fstec.ru без российских корневых сертификатов Минцифры)
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+
     $urls = @{
         "usbdeview.exe" = @{
             Url = "https://www.nirsoft.net/utils/usbdeview-x64.zip"
@@ -106,13 +109,13 @@ function Download-Utilities {
             SubFolder = "usbdeview"
         }
         "HWInfo64.exe" = @{
-            Url = "https://www.hwinfo.com/files/hwi_812.zip"
+            Url = "https://www.sac.sk/download/utildiag/hwi_848.zip"
             IsZip = $true
             ExeName = "HWiNFO64.exe"
             SubFolder = "hwinfo"
         }
         "WinAudit.exe" = @{
-            Url = "https://raw.githubusercontent.com/tomek-o/winaudit/master/WinAudit.exe"
+            Url = "https://raw.githubusercontent.com/jbarcia/PCI-Audit-Script/master/tools/WinAudit.exe"
             IsZip = $false
             ExeName = "WinAudit.exe"
             SubFolder = "winaudit"
@@ -283,5 +286,6 @@ while ($true) {
         break
     }
 }
+
 
 

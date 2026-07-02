@@ -14,17 +14,20 @@ $ReportDir = Join-Path $ProjectDir "report"
 $SziConfigFile = Join-Path $ServiceDir "szi_settings.conf"
 $StandardsFile = Join-Path $ServiceDir "compliance_standards.conf"
 
+$SoftwareDir = Join-Path $ReportDir "software"
+$ComplianceDir = Join-Path $ReportDir "compliance"
+
 # Очистка предыдущих результатов комплаенса и списков ПО перед новым сканированием
 if (Test-Path $ReportDir) {
-    $oldSoftware = Join-Path $ReportDir "installed_software.txt"
+    $oldSoftware = Join-Path $SoftwareDir "installed_software.txt"
     if (Test-Path $oldSoftware) { Remove-Item $oldSoftware -Force | Out-Null }
     
     $oldMainReport = Join-Path $ReportDir "security_report.html"
     if (Test-Path $oldMainReport) { Remove-Item $oldMainReport -Force | Out-Null }
     
-    Get-ChildItem -Path $ReportDir -Filter "compliance_report_*.txt" -ErrorAction SilentlyContinue | Remove-Item -Force | Out-Null
-} else {
-    New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null
+    if (Test-Path $ComplianceDir) {
+        Get-ChildItem -Path $ComplianceDir -Filter "compliance_report_*.txt" -ErrorAction SilentlyContinue | Remove-Item -Force | Out-Null
+    }
 }
 
 # Функция парсинга INI-файла стандартов
@@ -249,7 +252,9 @@ $installedSoftware = Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContin
     Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | 
     Sort-Object DisplayName
 
-$softwareFile = Join-Path $ReportDir "installed_software.txt"
+$SoftwareDir = Join-Path $ReportDir "software"
+if (-not (Test-Path $SoftwareDir)) { New-Item -ItemType Directory -Path $SoftwareDir -Force | Out-Null }
+$softwareFile = Join-Path $SoftwareDir "installed_software.txt"
 $installedSoftware | ForEach-Object {
     "$($_.DisplayName) | $($_.DisplayVersion) | $($_.Publisher) | $($_.InstallDate)"
 } | Out-File $softwareFile -Encoding utf8
@@ -278,7 +283,9 @@ if (Test-Path $usbstorPath) {
 
 # Генерация текстового отчета соответствия требованиям ФСТЭК
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$compTextFile = Join-Path $ReportDir "compliance_report_${targetClass}_${timestamp}.txt"
+$ComplianceDir = Join-Path $ReportDir "compliance"
+if (-not (Test-Path $ComplianceDir)) { New-Item -ItemType Directory -Path $ComplianceDir -Force | Out-Null }
+$compTextFile = Join-Path $ComplianceDir "compliance_report_${targetClass}_${timestamp}.txt"
 
 $reportLines = @()
 $reportLines += "========================================================================"
@@ -377,6 +384,7 @@ Write-Host "`nАудит успешно завершен!" -ForegroundColor Gree
 Write-Host "Текстовый отчет сохранен в: $compTextFile" -ForegroundColor Cyan
 Write-Host "HTML отчет сохранен в: $ProjectDir\report\security_report.html" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для продолжения..."
+
 
 
 

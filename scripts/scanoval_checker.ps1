@@ -19,15 +19,29 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     Exit 1
 }
 
+# Поддиректории для отчетов по приложениям
+$WinauditDir = Join-Path $ReportDir "winaudit"
+$UsbdeviewDir = Join-Path $ReportDir "usbdeview"
+$HwinfoDir = Join-Path $ReportDir "hwinfo"
+$ScanovalDir = Join-Path $ReportDir "scanoval"
+
+# Очистка предыдущих отчетов в подпапках, чтобы старые результаты не отображались
 if (Test-Path $ReportDir) {
-    # Удаляем предыдущие отчеты внешних утилит, чтобы старые результаты не отображались, если утилиты будут пропущены в текущем запуске
-    $filesToClear = @("winaudit_report.html", "usbdeview_report.html", "hwinfo_report.txt", "scanoval_report.html", "scanoval_results.xml")
+    $filesToClear = @(
+        (Join-Path $WinauditDir "winaudit_report.html"),
+        (Join-Path $UsbdeviewDir "usbdeview_report.html"),
+        (Join-Path $HwinfoDir "hwinfo_report.txt"),
+        (Join-Path $ScanovalDir "scanoval_report.html"),
+        (Join-Path $ScanovalDir "scanoval_results.xml")
+    )
     foreach ($file in $filesToClear) {
-        $filePath = Join-Path $ReportDir $file
-        if (Test-Path $filePath) { Remove-Item $filePath -Force | Out-Null }
+        if (Test-Path $file) { Remove-Item $file -Force | Out-Null }
     }
-} else {
-    New-Item -ItemType Directory -Path $ReportDir -Force | Out-Null
+}
+
+# Создание папок при необходимости
+foreach ($dir in @($WinauditDir, $UsbdeviewDir, $HwinfoDir, $ScanovalDir)) {
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 }
 
 # Функция поиска утилиты по имени (в корне tools или подпапках)
@@ -51,7 +65,7 @@ function Run-WinAudit {
     $exe = Find-Tool "WinAudit.exe" "winaudit"
     Write-Host "`n[1/4] Проверка WinAudit..." -ForegroundColor Cyan
     if ($exe) {
-        $outFile = Join-Path $ReportDir "winaudit_report.html"
+        $outFile = Join-Path $WinauditDir "winaudit_report.html"
         Write-Host "Запуск WinAudit для сбора системного аудита (это может занять до 1-2 минут)..." -ForegroundColor Gray
         Write-Host "Файл отчета: $outFile" -ForegroundColor DarkGray
         
@@ -72,7 +86,7 @@ function Run-USBDeview {
     $exe = Find-Tool "usbdeview.exe" "usbdeview"
     Write-Host "`n[2/4] Проверка USBDeview..." -ForegroundColor Cyan
     if ($exe) {
-        $outFile = Join-Path $ReportDir "usbdeview_report.html"
+        $outFile = Join-Path $UsbdeviewDir "usbdeview_report.html"
         Write-Host "Запуск USBDeview для экспорта истории подключений USB..." -ForegroundColor Gray
         
         & $exe /shtml "$outFile"
@@ -92,7 +106,7 @@ function Run-HWInfo {
     if (-not $exe) { $exe = Find-Tool "HWInfo32.exe" "hwinfo" }
     
     Write-Host "`n[3/4] Проверка HWInfo..." -ForegroundColor Cyan
-    $outFile = Join-Path $ReportDir "hwinfo_report.txt"
+    $outFile = Join-Path $HwinfoDir "hwinfo_report.txt"
     
     if ($exe) {
         Write-Host "Запуск HWInfo для экспорта характеристик оборудования..." -ForegroundColor Gray
@@ -188,8 +202,8 @@ function Run-ScanOval {
         # Поиск OVAL-файла базы уязвимостей ФСТЭК в папке service
         $ovalFile = Get-ChildItem -Path (Join-Path $ProjectDir "service") -Filter "*.xml" | Where-Object { $_.Name -like "*oval*" -or $_.Name -like "*vulnerabilities*" } | Select-Object -First 1
         
-        $outFileXml = Join-Path $ReportDir "scanoval_results.xml"
-        $outFileHtml = Join-Path $ReportDir "scanoval_report.html"
+        $outFileXml = Join-Path $ScanovalDir "scanoval_results.xml"
+        $outFileHtml = Join-Path $ScanovalDir "scanoval_report.html"
         
         if ($ovalFile) {
             Write-Host "Обнаружена локальная OVAL-база: $($ovalFile.FullName)" -ForegroundColor Green
@@ -221,6 +235,5 @@ Run-ScanOval
 Write-Host "`n=== Запуск внешних проверок завершен ===" -ForegroundColor Green
 Write-Host "Сформированные отчеты доступны в каталоге: $ReportDir" -ForegroundColor Cyan
 Read-Host "`nНажмите Enter для возврата в меню..."
-
 
 

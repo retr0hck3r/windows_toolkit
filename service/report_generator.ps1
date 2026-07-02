@@ -154,7 +154,7 @@ $sn = If ($sn) { $sn } else { "Не определен" }
 
 # Сбор строк программного обеспечения
 $softwareRows = ""
-$softwareFile = Join-Path $ReportDir "installed_software.txt"
+$softwareFile = Join-Path (Join-Path $ReportDir "software") "installed_software.txt"
 if (Test-Path $softwareFile) {
     $swLines = Get-Content $softwareFile
     foreach ($line in $swLines) {
@@ -179,17 +179,17 @@ foreach ($dev in $usbDevices) {
     $usbRows += "<tr><td><b>$dFriendly</b></td><td>$dName</td><td><code>$dSerial</code></td><td>$dDesc</td></tr>`n"
 }
 
-# Сбор внешних файлов отчетов
-$winauditExists = Test-Path (Join-Path $ReportDir "winaudit_report.html")
-$usbdeviewExists = Test-Path (Join-Path $ReportDir "usbdeview_report.html")
-$hwinfoExists = Test-Path (Join-Path $ReportDir "hwinfo_report.txt")
-$scanovalExists = Test-Path (Join-Path $ReportDir "scanoval_report.html")
+# Сбор внешних файлов отчетов из подпапок
+$winauditExists = Test-Path (Join-Path (Join-Path $ReportDir "winaudit") "winaudit_report.html")
+$usbdeviewExists = Test-Path (Join-Path (Join-Path $ReportDir "usbdeview") "usbdeview_report.html")
+$hwinfoExists = Test-Path (Join-Path (Join-Path $ReportDir "hwinfo") "hwinfo_report.txt")
+$scanovalExists = Test-Path (Join-Path (Join-Path $ReportDir "scanoval") "scanoval_report.html")
 
-# Кнопки отчетов внешних утилит
-$html_winaudit = If ($winauditExists) { "<a href='winaudit_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
-$html_usbdeview = If ($usbdeviewExists) { "<a href='usbdeview_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
-$html_hwinfo = If ($hwinfoExists) { "<a href='hwinfo_report.txt' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть TXT</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
-$html_scanoval = If ($scanovalExists) { "<a href='scanoval_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+# Кнопки отчетов внешних утилит (ссылки ведут в соответствующие подпапки)
+$html_winaudit = If ($winauditExists) { "<a href='winaudit/winaudit_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+$html_usbdeview = If ($usbdeviewExists) { "<a href='usbdeview/usbdeview_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+$html_hwinfo = If ($hwinfoExists) { "<a href='hwinfo/hwinfo_report.txt' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть TXT</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
+$html_scanoval = If ($scanovalExists) { "<a href='scanoval/scanoval_report.html' class='action-btn' target='_blank' style='border-color: var(--status-pass); color: var(--status-pass);'>Открыть HTML</a>" } else { "<span style='color: var(--text-muted); font-size: 0.85rem;'>Отчет отсутствует (утилита не запускалась)</span>" }
 
 # Запись шаблона HTML-отчета
 $html = @"
@@ -728,7 +728,7 @@ $html = @"
         <div class="section-panel">
             <div class="section-title">
                 <span>Состав установленного ПО ($installedSoftwareCount позиций)</span>
-                <a href="installed_software.txt" class="action-btn" target="_blank" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Открыть TXT</a>
+                <a href="software/installed_software.txt" class="action-btn" target="_blank" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Открыть TXT</a>
             </div>
             <input type="text" id="softwareSearch" class="search-box" placeholder="Поиск ПО по названию, версии или издателю..." onkeyup="filterSoftwareTable()">
             <div class="table-container">
@@ -843,4 +843,5 @@ $html = @"
 
 # Запись отчета в файл
 $html | Out-File $ReportFile -Encoding utf8
+
 
